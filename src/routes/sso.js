@@ -20,7 +20,7 @@ const { signAccess } = require('../auth');
 const { issue } = require('./auth');
 
 const TTL_SECONDS = parseInt(process.env.SSO_CODE_TTL || '300', 10);
-const EXPECTED_APP = process.env.SSO_APP_SLUG || 'zmedics';
+const EXPECTED_APP = process.env.SSO_APP_SLUG || 'acumedis';
 
 /**
  * POST /v1/auth/sso/exchange  {token, deviceId?}

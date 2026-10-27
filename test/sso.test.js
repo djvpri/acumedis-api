@@ -10,7 +10,7 @@ const assert = require('node:assert');
 
 process.env.JWT_SECRET = 'q'.repeat(40);
 process.env.CROSS_APP_SECRET = 'test-cross-secret';
-process.env.SSO_APP_SLUG = 'zmedics';
+process.env.SSO_APP_SLUG = 'acumedis';
 
 const jwt = require('jsonwebtoken');
 const sso = require('../src/routes/sso');
@@ -50,7 +50,7 @@ test('claim tanpa body ditolak 400', async () => {
 });
 
 test('claim dengan token dari secret asing ditolak 401', async () => {
-  const bad = jwt.sign({ email: 'a@b.c', app: 'zmedics' }, 'secret-palsu', { expiresIn: '5m' });
+  const bad = jwt.sign({ email: 'a@b.c', app: 'acumedis' }, 'secret-palsu', { expiresIn: '5m' });
   const r = reply();
   await sso.claim({ body: { code: 'AAAA-2222', token: bad } }, r);
   assert.equal(r._c, 401);
@@ -79,7 +79,7 @@ test('fallback secret lama tetap diterima (kompatibel Z One)', () => {
   // tanpa CROSS_APP_SECRET di env, secret lama harus tetap lolos verifikasi token
   delete process.env.CROSS_APP_SECRET;
   const old = jwt.sign(
-    { email: 'a@b.c', app: 'zmedics' },
+    { email: 'a@b.c', app: 'acumedis' },
     'z-ecosystem-admin-2026',
     { expiresIn: '5m' }
   );
