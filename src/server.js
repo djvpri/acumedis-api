@@ -7,6 +7,7 @@ const { requireAuth } = require('./auth');
 const auth = require('./routes/auth');
 const sso = require('./routes/sso');
 const logs = require('./routes/logs');
+const admin = require('./routes/admin');
 const patients = require('./routes/patients');
 const sessions = require('./routes/sessions');
 const appointments = require('./routes/appointments');
@@ -49,6 +50,10 @@ app.post('/v1/auth/sso/exchange', sso.exchange);
 
 // Log error dari app — publik, identitas perangkat lewat header X-Device-Id
 app.post('/v1/logs', logs.create);
+
+// Jembatan admin Z One (hub): auth Bearer CROSS_APP_SECRET, bukan JWT app
+app.get('/api/admin/cross-app', admin.get);
+app.post('/api/admin/cross-app', admin.post);
 
 // Semua di bawah ini wajib Bearer token
 app.register(async (r) => {
