@@ -1,5 +1,4 @@
 'use strict';
-require('dotenv').config?.();
 
 const Fastify = require('fastify');
 const { prisma } = require('./db');
