@@ -1,0 +1,225 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Gender {
+  male
+  female
+}
+
+enum PaymentStatus {
+  paid
+  unpaid
+  partial
+}
+
+enum AppointmentStatus {
+  pending
+  confirmed
+  done
+  cancelled
+}
+
+enum PhotoType {
+  tongue
+  body
+  other
+}
+
+enum RequestStatus {
+  pending
+  confirmed
+  cancelled
+  declined
+}
+
+enum PractitionerRole {
+  owner
+  practitioner
+  admin
+}
+
+// Tenant = Klinik
+model Tenant {
+  id           String   @id @default(cuid())
+  name         String   // nama klinik
+  slug         String?  @unique
+  address      String?
+  phone        String?
+  isActive     Boolean  @default(true)
+  isDemo       Boolean  @default(false)
+  plan         String   @default("starter")
+  expiresAt    DateTime?
+  createdAt    DateTime @default(now())
+
+  // Direktori publik (profil klinik di /find & /klinik/[id])
+  clinicName      String?
+  specialty       String?
+  city            String?
+  province        String?
+  publicAddress   String?
+  description     String?  @db.Text
+  phonePublic     String?
+  isListed        Boolean  @default(false)
+  acceptsBookings Boolean  @default(true)
+
+  practitioners Practitioner[]
+  patients      Patient[]
+  sessions      Session[]
+  appointments  Appointment[]
+  stockItems    StockItem[]
+  expenses      Expense[]
+  clinicPhotos  ClinicPhoto[]
+  appointmentReqs AppointmentRequest[]
+}
+
+// Practitioner = Dokter/Terapis di klinik
+model Practitioner {
+  id           String           @id @default(cuid())
+  tenantId     String
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name         String
+  email        String           @unique
+  password     String
+  role         PractitionerRole @default(practitioner)
+  phone        String?
+  avatarBase64 String?          @db.Text
+  currency     String           @default("IDR")
+  defaultFee   Float?           @default(0)
+  isActive     Boolean          @default(true)
+  createdAt    DateTime         @default(now())
+
+  sessions     Session[]
+  appointments Appointment[]
+}
+
+model Patient {
+  id           String    @id @default(cuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name         String
+  gender       Gender?
+  birthDate    DateTime?
+  phone        String?
+  email        String?
+  address      String?
+  avatarBase64 String?   @db.Text
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  sessions     Session[]
+  appointments Appointment[]
+}
+
+model Session {
+  id               String         @id @default(cuid())
+  tenantId         String
+  tenant           Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId        String
+  patient          Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  practitionerId   String?
+  practitioner     Practitioner?  @relation(fields: [practitionerId], references: [id])
+  sessionDate      DateTime       @default(now())
+  chiefComplaint   String
+  tongueColor      String?
+  tongueCoating    String?
+  pulseQuality     String?
+  painScale        Int?
+  tcmDiagnosis     String?
+  pointsUsed       String[]       @default([])
+  durationMinutes  Int?
+  notes            String?        @db.Text
+  aiRecommendation Json?
+  fee              Float?
+  paymentStatus    PaymentStatus  @default(unpaid)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  photos           SessionPhoto[]
+  appointment      Appointment?
+}
+
+model SessionPhoto {
+  id           String    @id @default(cuid())
+  sessionId    String
+  session      Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  photoType    PhotoType @default(tongue)
+  photoBase64  String    @db.Text
+  aiAnalysis   String?   @db.Text
+  createdAt    DateTime  @default(now())
+}
+
+model Appointment {
+  id               String             @id @default(cuid())
+  tenantId         String
+  tenant           Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  practitionerId   String?
+  practitioner     Practitioner?      @relation(fields: [practitionerId], references: [id])
+  patientId        String?
+  patient          Patient?           @relation(fields: [patientId], references: [id])
+  sessionId        String?            @unique
+  session          Session?           @relation(fields: [sessionId], references: [id])
+  scheduledAt      DateTime
+  durationMinutes  Int                @default(60)
+  reason           String?
+  status           AppointmentStatus  @default(confirmed)
+  externalName     String?
+  externalPhone    String?
+  notes            String?            @db.Text
+  queueNumber      Int?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+}
+
+model AppointmentRequest {
+  id              String          @id @default(cuid())
+  tenantId        String
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name            String
+  phone           String
+  email           String?
+  preferredDate   DateTime?
+  preferredTime   String?
+  reason          String?
+  notes           String?
+  status          RequestStatus   @default(pending)
+  createdAt       DateTime        @default(now())
+}
+
+model StockItem {
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name            String
+  category        String?
+  quantity        Float    @default(0)
+  minQuantity     Float    @default(0)
+  unit            String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Expense {
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  description     String
+  amount          Float
+  category        String?
+  date            DateTime @default(now())
+  createdAt       DateTime @default(now())
+}
+
+model ClinicPhoto {
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  photoBase64     String   @db.Text
+  caption         String?
+  createdAt       DateTime @default(now())
+}

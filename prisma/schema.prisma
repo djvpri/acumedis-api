@@ -1,0 +1,243 @@
+// AcuMedis API — schema data klinik (dipakai Android saja, tanpa web).
+// Sumber: schema z_medics, disesuaikan: foto pakai URL file, bukan base64 di DB.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Gender {
+  male
+  female
+}
+
+enum PaymentStatus {
+  paid
+  unpaid
+  partial
+}
+
+enum AppointmentStatus {
+  pending
+  confirmed
+  done
+  cancelled
+}
+
+enum PhotoType {
+  tongue
+  body
+  other
+}
+
+enum WorksheetStatus {
+  pending
+  confirmed
+  cancelled
+  declined
+}
+
+enum PractitionerRole {
+  owner
+  practitioner
+  admin
+}
+
+model Tenant {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String?  @unique
+  address     String?
+  phone       String?
+  isActive    Boolean  @default(true)
+  plan        String   @default("starter")
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  clinicName  String?
+  specialty   String?
+  city        String?
+  province    String?
+
+  practitioners Practitioner[]
+  patients      Patient[]
+  sessions      Session[]
+  appointments  Appointment[]
+  stockItems    StockItem[]
+  expenses      Expense[]
+  requests      AppointmentRequest[]
+
+  @@index([slug])
+}
+
+model Practitioner {
+  id        String           @id @default(cuid())
+  tenantId  String
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  email     String           @unique
+  password  String
+  role      PractitionerRole @default(practitioner)
+  phone     String?
+  currency  String           @default("IDR")
+  defaultFee Float?          @default(0)
+  isActive  Boolean          @default(true)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  sessions     Session[]
+  appointments Appointment[]
+  refreshTokens RefreshToken[]
+
+  @@index([tenantId])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      Practitioner @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId  String?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  @@index([userId])
+}
+
+model Patient {
+  id        String    @id @default(cuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  gender    Gender?
+  birthDate DateTime?
+  phone     String?
+  email     String?
+  address   String?
+  note      String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  sessions     Session[]
+  appointments Appointment[]
+
+  @@index([tenantId, name])
+  @@index([tenantId, updatedAt])
+}
+
+model Session {
+  id              String        @id @default(cuid())
+  tenantId        String
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId       String
+  patient         Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  practitionerId  String?
+  practitioner    Practitioner? @relation(fields: [practitionerId], references: [id])
+  sessionDate     DateTime      @default(now())
+  chiefComplaint  String
+  tongueColor     String?
+  tongueCoating   String?
+  pulseQuality    String?
+  painScale       Int?
+  tcmDiagnosis    String?
+  pointsUsed      String[]      @default([])
+  durationMinutes Int?
+  notes           String?       @db.Text
+  aiRecommendation Json?
+  fee             Float?
+  paymentStatus   PaymentStatus @default(unpaid)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+
+  photos SessionPhoto[]
+
+  @@index([tenantId, sessionDate])
+  @@index([tenantId, updatedAt])
+  @@index([patientId])
+}
+
+model SessionPhoto {
+  id        String    @id @default(cuid())
+  sessionId String
+  session   Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  photoType PhotoType @default(tongue)
+  fileUrl   String    @db.Text   // URL file, bukan base64 di DB
+  aiAnalysis String?  @db.Text
+  createdAt DateTime  @default(now())
+
+  @@index([sessionId])
+}
+
+model Appointment {
+  id              String            @id @default(cuid())
+  tenantId        String
+  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  practitionerId  String?
+  practitioner    Practitioner?     @relation(fields: [practitionerId], references: [id])
+  patientId       String?
+  patient         Patient?          @relation(fields: [patientId], references: [id])
+  scheduledAt     DateTime
+  durationMinutes Int               @default(60)
+  reason          String?
+  status          AppointmentStatus @default(confirmed)
+  externalName    String?
+  externalPhone   String?
+  notes           String?           @db.Text
+  queueNumber     Int?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  deletedAt       DateTime?
+
+  @@index([tenantId, scheduledAt])
+  @@index([tenantId, updatedAt])
+}
+
+model AppointmentRequest {
+  id            String          @id @default(cuid())
+  tenantId      String
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name          String
+  phone         String
+  preferredDate DateTime?
+  reason        String?
+  status        WorksheetStatus @default(pending)
+  createdAt     DateTime        @default(now())
+
+  @@index([tenantId, status])
+}
+
+model StockItem {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  category    String?
+  quantity    Float    @default(0)
+  minQuantity Float    @default(0)
+  unit        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, name])
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  description String
+  amount      Float
+  category    String?
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, date])
+}
