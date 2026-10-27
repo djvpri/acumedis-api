@@ -110,6 +110,19 @@ model RefreshToken {
   @@index([userId])
 }
 
+// Kode perangkat sekali pakai untuk SSO dari Z One (device-code flow).
+model SsoCode {
+  id        String    @id @default(cuid())
+  codeHash  String    @unique
+  deviceId  String?
+  email     String?
+  claimedAt DateTime?
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
 model Patient {
   id        String    @id @default(cuid())
   tenantId  String

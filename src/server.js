@@ -5,6 +5,7 @@ const { prisma } = require('./db');
 const { requireAuth } = require('./auth');
 
 const auth = require('./routes/auth');
+const sso = require('./routes/sso');
 const patients = require('./routes/patients');
 const sessions = require('./routes/sessions');
 const appointments = require('./routes/appointments');
@@ -38,6 +39,11 @@ app.get('/api/health', async () => {
 app.post('/v1/auth/login', auth.login);
 app.post('/v1/auth/refresh', auth.refresh);
 app.post('/v1/auth/logout', auth.logout);
+
+// SSO Z One (device-code): start & poll dipanggil app, claim dipanggil server Z One
+app.post('/v1/auth/sso/start', sso.start);
+app.post('/v1/auth/sso/claim', sso.claim);
+app.get('/v1/auth/sso/poll', sso.poll);
 
 // Semua di bawah ini wajib Bearer token
 app.register(async (r) => {

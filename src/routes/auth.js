@@ -114,4 +114,4 @@ async function me(req) {
   };
 }
 
-module.exports = { login, refresh, logout, me };
+module.exports = { login, refresh, logout, me, issue };
