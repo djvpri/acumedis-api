@@ -110,6 +110,32 @@ model RefreshToken {
   @@index([userId])
 }
 
+// Log error dari app Android (crash & non-fatal). PII sudah di-scrub di klien.
+model ErrorLog {
+  id             String    @id @default(cuid())
+  clientId       String    @unique
+  level          String    @default("error")
+  kind           String    @default("crash")
+  message        String    @db.Text
+  stackTrace     String?   @db.Text
+  screen         String?
+  deviceId       String?
+  appVersion     String?
+  versionCode    Int?
+  androidVersion String?
+  deviceModel    String?
+  baseUrl        String?
+  tenantId       String?
+  userId         String?
+  occurredAt     DateTime  @default(now())
+  receivedAt     DateTime  @default(now())
+  resolvedAt     DateTime?
+
+  @@index([tenantId, occurredAt])
+  @@index([level, receivedAt])
+  @@index([occurredAt])
+}
+
 // Kode perangkat sekali pakai untuk SSO dari Z One (device-code flow).
 model SsoCode {
   id        String    @id @default(cuid())

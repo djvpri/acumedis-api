@@ -10,7 +10,7 @@
     "dev": "node --watch src/server.js",
     "migrate": "prisma db push --accept-data-loss && prisma generate",
     "seed": "node src/seed.js",
-    "test": "node --test test/"
+    "test": "node --test test/*.test.js"
   },
   "engines": { "node": ">=20" },
   "dependencies": {

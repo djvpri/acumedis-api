@@ -6,6 +6,7 @@ const { requireAuth } = require('./auth');
 
 const auth = require('./routes/auth');
 const sso = require('./routes/sso');
+const logs = require('./routes/logs');
 const patients = require('./routes/patients');
 const sessions = require('./routes/sessions');
 const appointments = require('./routes/appointments');
@@ -45,6 +46,9 @@ app.post('/v1/auth/sso/start', sso.start);
 app.post('/v1/auth/sso/claim', sso.claim);
 app.get('/v1/auth/sso/poll', sso.poll);
 
+// Log error dari app — publik, identitas perangkat lewat header X-Device-Id
+app.post('/v1/logs', logs.create);
+
 // Semua di bawah ini wajib Bearer token
 app.register(async (r) => {
   r.addHook('preHandler', requireAuth);
@@ -52,6 +56,10 @@ app.register(async (r) => {
   r.get('/v1/me', auth.me);
   r.get('/v1/summary', reports.summary);
   r.get('/v1/sync', reports.sync);
+
+  // baca & purge log error (owner/admin)
+  r.get('/v1/logs', logs.list);
+  r.delete('/v1/logs', logs.purge);
 
   r.get('/v1/patients', patients.list);
   r.get('/v1/patients/:id', patients.detail);
