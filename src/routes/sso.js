@@ -22,6 +22,28 @@ const { issue } = require('./auth');
 const TTL_SECONDS = parseInt(process.env.SSO_CODE_TTL || '300', 10);
 const EXPECTED_APP = process.env.SSO_APP_SLUG || 'zmedics';
 
+/**
+ * POST /v1/auth/sso/exchange  {token, deviceId?}
+ * Alur deep link: Z One menandatangani token, app menerimanya lewat
+ * `acumedis://sso?token=...`, lalu menukarnya di sini jadi sesi AcuMedis.
+ * Verifikasi sama persis dengan claim — bedanya tidak ada kode perangkat.
+ */
+async function exchange(req, reply) {
+  const { token } = req.body || {};
+  if (!token) return reply.code(400).send({ ok: false, error: 'token wajib' });
+
+  const payload = verifyZoneToken(token);
+  if (!payload) return reply.code(401).send({ ok: false, error: 'token Z One tidak valid' });
+  if (payload.app && payload.app !== EXPECTED_APP) {
+    return reply.code(403).send({ ok: false, error: `token untuk app "${payload.app}"` });
+  }
+
+  const email = String(payload.email).toLowerCase().trim();
+  const user = await prisma.practitioner.findUnique({ where: { email }, include: { tenant: true } });
+
+  return issueFor(user, req.body?.deviceId || null, reply);
+}
+
 function secrets() {
   const list = [];
   if (process.env.CROSS_APP_SECRET) list.push(process.env.CROSS_APP_SECRET);
@@ -50,11 +72,12 @@ async function start(req, reply) {
   });
 
   const zone = (process.env.ZONE_URL || 'https://zone.zomet.my.id').replace(/\/+$/, '');
+  // redirect=mobile → halaman /link menawarkan kembali ke app lewat deep link
   return reply.code(201).send({
     ok: true,
     code,
     expiresIn: TTL_SECONDS,
-    verifyUrl: `${zone}/link?code=${encodeURIComponent(code)}`,
+    verifyUrl: `${zone}/link?code=${encodeURIComponent(code)}&redirect=mobile`,
   });
 }
 
@@ -122,15 +145,24 @@ async function poll(req, reply) {
     where: { email: row.email },
     include: { tenant: true },
   });
-  if (!user || !user.isActive) {
-    return reply.code(403).send({ ok: false, error: 'akun tidak aktif' });
-  }
 
   // sekali pakai: kode langsung dibakar
   await prisma.ssoCode.delete({ where: { id: row.id } });
 
+  return issueFor(user, row.deviceId, reply);
+}
+
+/** Bentuk balasan login yang sama untuk poll & exchange. */
+async function issueFor(user, deviceId, reply) {
+  if (!user || !user.isActive) {
+    return reply.code(403).send({
+      ok: false,
+      error: 'Akun ini belum terdaftar sebagai praktisi AcuMedis. Hubungi admin klinik.',
+    });
+  }
+
   const accessToken = signAccess(user);
-  const refresh = await issue(user, row.deviceId);
+  const refresh = await issue(user, deviceId || null);
 
   return {
     ok: true,
@@ -149,4 +181,4 @@ async function poll(req, reply) {
   };
 }
 
-module.exports = { start, claim, poll, hash, newCode };
+module.exports = { start, claim, poll, exchange, hash, newCode };

@@ -45,6 +45,7 @@ app.post('/v1/auth/logout', auth.logout);
 app.post('/v1/auth/sso/start', sso.start);
 app.post('/v1/auth/sso/claim', sso.claim);
 app.get('/v1/auth/sso/poll', sso.poll);
+app.post('/v1/auth/sso/exchange', sso.exchange);
 
 // Log error dari app — publik, identitas perangkat lewat header X-Device-Id
 app.post('/v1/logs', logs.create);
