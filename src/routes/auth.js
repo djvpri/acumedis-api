@@ -111,6 +111,17 @@ async function me(req) {
       tenantId: user.tenantId,
       clinicName: user.tenant?.name || null,
     },
+    // dipakai app untuk kepala nota (nama tempat praktek, alamat, no hp)
+    tenant: user.tenant
+      ? {
+          id: user.tenant.id,
+          name: user.tenant.name,
+          clinicName: user.tenant.clinicName || user.tenant.name,
+          address: user.tenant.address || null,
+          phone: user.tenant.phone || null,
+          city: user.tenant.city || null,
+        }
+      : null,
   };
 }
 
