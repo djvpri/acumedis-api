@@ -10,7 +10,6 @@
  */
 const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const MAX_BYTES = 6 * 1024 * 1024;
-
 const PROMPT = `Kamu asisten klinik akupunktur/TCM berbahasa Indonesia.
 Lihat foto lidah ini dan beri jawaban HANYA dalam JSON valid, tanpa markdown:
 {
@@ -44,7 +43,14 @@ async function tongue(req, reply) {
         ],
       },
     ],
-    generationConfig: { temperature: 0.2, maxOutputTokens: 700, responseMimeType: 'application/json' },
+    generationConfig: {
+      temperature: 0.2,
+      // 2.5-flash memakai token untuk "thinking" sebelum menjawab. Dengan 700
+      // token, jawaban JSON sering terpotong di tengah → gagal di-parse.
+      maxOutputTokens: 2048,
+      responseMimeType: 'application/json',
+      thinkingConfig: { thinkingBudget: 0 },
+    },
   };
 
   let res, text;
@@ -64,12 +70,21 @@ async function tongue(req, reply) {
   }
 
   let parsed = null;
+  let finish = '';
+  let raw = '';
   try {
     const d = JSON.parse(text);
-    const raw = (d.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
+    finish = d.candidates?.[0]?.finishReason || '';
+    raw = (d.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
     parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
   } catch {
-    return reply.code(502).send({ ok: false, error: 'Balasan AI tidak bisa dibaca' });
+    // sertakan cuplikan balasan: tanpa ini "tidak bisa dibaca" tidak bisa ditelusuri
+    const why = finish === 'MAX_TOKENS' ? 'jawaban AI terpotong' : finish || 'balasan bukan JSON';
+    return reply.code(502).send({
+      ok: false,
+      error: `Balasan AI tidak bisa dibaca (${why})`,
+      detail: raw.slice(0, 300),
+    });
   }
 
   return {
