@@ -313,6 +313,8 @@ model Expense {
   amount      Float
   category    String?
   date        DateTime @default(now())
+  /// foto struk di volume upload; null kalau tidak dilampirkan
+  receiptUrl  String?
   createdAt   DateTime @default(now())
 
   @@index([tenantId, date])

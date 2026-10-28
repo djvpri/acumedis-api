@@ -110,6 +110,8 @@ app.register(async (r) => {
   r.patch('/v1/stock/:id', inventory.updateStock);
   r.get('/v1/expenses', inventory.listExpenses);
   r.post('/v1/expenses', inventory.createExpense);
+  r.patch('/v1/expenses/:id', inventory.updateExpense);
+  r.delete('/v1/expenses/:id', inventory.removeExpense);
 
   // pembayaran: satu baris per transaksi, status sesi dihitung dari jumlahnya
   r.post('/v1/sessions/:id/payments', payments.create);

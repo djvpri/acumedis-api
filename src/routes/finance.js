@@ -37,7 +37,7 @@ async function overview(req) {
     }),
     prisma.expense.findMany({
       where: { tenantId, date: { gte: start, lte: end } },
-      select: { amount: true, category: true, description: true, date: true },
+      select: { id: true, amount: true, category: true, description: true, date: true },
     }),
     prisma.session.findMany({
       where: { tenantId, sessionDate: { gte: start, lte: end }, deletedAt: null },
@@ -78,6 +78,16 @@ async function overview(req) {
     byCategory[k] = (byCategory[k] || 0) + e.amount;
   }
 
+  // daftar pengeluaran terbaru, supaya bisa dikoreksi dari app
+  const expenseRows = expenses
+    .slice()
+    .sort((a, b) => b.date - a.date)
+    .slice(0, 50)
+    .map(e => ({
+      id: e.id, description: e.description, amount: e.amount,
+      category: e.category || 'lain-lain', date: e.date.toISOString(),
+    }));
+
   // grafik harian untuk rentang yang diminta (maks 60 titik)
   const days = [];
   for (let t = start.getTime(); t <= end.getTime() && days.length < 60; t += 86_400_000) {
@@ -111,6 +121,7 @@ async function overview(req) {
     by_method: byMethod,
     by_practitioner: byPractitioner,
     by_category: byCategory,
+    expenses: expenseRows,
     billed: sessions.reduce((t, s) => t + (s.fee || 0), 0),
     sessions_count: sessions.length,
     days,

@@ -1,5 +1,32 @@
 'use strict';
+const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
 const { prisma } = require('../db');
+
+const UPLOAD_DIR = process.env.UPLOAD_DIR || '/data/uploads';
+const RECEIPT_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+
+/** Simpan foto struk; gagal simpan file tidak boleh menggagalkan pencatatan. */
+function saveReceipt(tenantId, base64, mime) {
+  const ext = RECEIPT_EXT[String(mime || 'image/jpeg')] || 'jpg';
+  const raw = String(base64).replace(/^data:[^;]+;base64,/, '');
+  const buf = Buffer.from(raw, 'base64');
+  if (!buf.length || buf.length > 8 * 1024 * 1024) return null;
+  try {
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    const name = `${tenantId}-struk-${crypto.randomBytes(6).toString('hex')}.${ext}`;
+    fs.writeFileSync(path.join(UPLOAD_DIR, name), buf);
+    return `/uploads/${name}`;
+  } catch (e) {
+    console.warn('[expense] gagal simpan struk:', e.message);
+    return null;
+  }
+}
+
+function runCatchingDelete(file) {
+  try { fs.unlinkSync(file); } catch { /* file sudah tidak ada */ }
+}
 
 function toStock(s) {
   return {
@@ -63,6 +90,7 @@ function toExpense(e) {
   return {
     id: e.id, description: e.description, amount: e.amount,
     category: e.category, date: e.date.toISOString(),
+    receipt_url: e.receiptUrl,
   };
 }
 
@@ -87,6 +115,11 @@ async function createExpense(req, reply) {
   if (!b.description || !Number.isFinite(b.amount)) {
     return reply.code(400).send({ ok: false, error: 'description dan amount wajib' });
   }
+  // struk opsional: disimpan di volume yang sama dengan foto lidah
+  const receipt = b.receipt_base64
+    ? saveReceipt(req.user.tenantId, b.receipt_base64, b.receipt_mime)
+    : null;
+
   const e = await prisma.expense.create({
     data: {
       tenantId: req.user.tenantId,
@@ -94,12 +127,46 @@ async function createExpense(req, reply) {
       amount: b.amount,
       category: b.category || null,
       date: b.date ? new Date(String(b.date)) : new Date(),
+      receiptUrl: receipt,
     },
   });
   return reply.code(201).send({ ok: true, expense: toExpense(e) });
 }
 
+async function updateExpense(req, reply) {
+  const existing = await prisma.expense.findFirst({
+    where: { id: req.params.id, tenantId: req.user.tenantId },
+  });
+  if (!existing) return reply.code(404).send({ ok: false, error: 'pengeluaran tidak ditemukan' });
+
+  const b = req.body || {};
+  const e = await prisma.expense.update({
+    where: { id: existing.id },
+    data: {
+      description: b.description !== undefined ? String(b.description).trim() : undefined,
+      amount: Number.isFinite(b.amount) ? b.amount : undefined,
+      category: b.category !== undefined ? b.category : undefined,
+      date: b.date ? new Date(String(b.date)) : undefined,
+    },
+  });
+  return { ok: true, expense: toExpense(e) };
+}
+
+/** Hapus pengeluaran + file struknya, supaya volume tidak menumpuk sampah. */
+async function removeExpense(req, reply) {
+  const e = await prisma.expense.findFirst({
+    where: { id: req.params.id, tenantId: req.user.tenantId },
+  });
+  if (!e) return reply.code(404).send({ ok: false, error: 'pengeluaran tidak ditemukan' });
+
+  if (e.receiptUrl) {
+    runCatchingDelete(path.join(UPLOAD_DIR, path.basename(e.receiptUrl)));
+  }
+  await prisma.expense.delete({ where: { id: e.id } });
+  return { ok: true };
+}
+
 module.exports = {
   listStock, createStock, updateStock,
-  listExpenses, createExpense,
+  listExpenses, createExpense, updateExpense, removeExpense,
 };
