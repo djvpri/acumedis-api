@@ -14,6 +14,7 @@ const ai = require('./routes/ai');
 const patients = require('./routes/patients');
 const payments = require('./routes/payments');
 const finance = require('./routes/finance');
+const license = require('./license');
 const sessions = require('./routes/sessions');
 const appointments = require('./routes/appointments');
 const photos = require('./routes/photos');
@@ -68,6 +69,7 @@ app.register(async (r) => {
   r.addHook('preHandler', requireAuth);
 
   r.get('/v1/me', auth.me);
+  r.get('/v1/license', license.get);
   r.get('/v1/summary', reports.summary);
   r.get('/v1/sync', reports.sync);
 
@@ -87,21 +89,21 @@ app.register(async (r) => {
 
   r.get('/v1/patients', patients.list);
   r.get('/v1/patients/:id', patients.detail);
-  r.post('/v1/patients', patients.create);
+  r.post('/v1/patients', { preHandler: license.requireWritable }, patients.create);
   r.patch('/v1/patients/:id', patients.update);
   r.delete('/v1/patients/:id', patients.remove);
 
   r.get('/v1/sessions', sessions.list);
   r.get('/v1/sessions/:id', sessions.detail);
-  r.post('/v1/sessions', sessions.create);
+  r.post('/v1/sessions', { preHandler: license.requireWritable }, sessions.create);
   r.patch('/v1/sessions/:id', sessions.update);
   r.patch('/v1/sessions/:id/payment', sessions.setPayment);
   r.delete('/v1/sessions/:id', sessions.remove);
-  r.post('/v1/sessions/:id/photos', photos.upload);
+  r.post('/v1/sessions/:id/photos', { preHandler: license.requireWritable }, photos.upload);
   r.delete('/v1/sessions/:id/photos/:photoId', photos.remove);
 
   r.get('/v1/appointments', appointments.list);
-  r.post('/v1/appointments', appointments.create);
+  r.post('/v1/appointments', { preHandler: license.requireWritable }, appointments.create);
   r.patch('/v1/appointments/:id', appointments.update);
   r.delete('/v1/appointments/:id', appointments.remove);
 
@@ -109,12 +111,12 @@ app.register(async (r) => {
   r.post('/v1/stock', inventory.createStock);
   r.patch('/v1/stock/:id', inventory.updateStock);
   r.get('/v1/expenses', inventory.listExpenses);
-  r.post('/v1/expenses', inventory.createExpense);
+  r.post('/v1/expenses', { preHandler: license.requireWritable }, inventory.createExpense);
   r.patch('/v1/expenses/:id', inventory.updateExpense);
   r.delete('/v1/expenses/:id', inventory.removeExpense);
 
   // pembayaran: satu baris per transaksi, status sesi dihitung dari jumlahnya
-  r.post('/v1/sessions/:id/payments', payments.create);
+  r.post('/v1/sessions/:id/payments', { preHandler: license.requireWritable }, payments.create);
   r.get('/v1/payments', payments.list);
   r.delete('/v1/payments/:id', payments.remove);
   r.get('/v1/finance', finance.overview);

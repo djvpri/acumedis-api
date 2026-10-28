@@ -56,6 +56,10 @@ model Tenant {
   isActive    Boolean  @default(true)
   plan        String   @default("starter")
   expiresAt   DateTime?
+  /// lisensi bertanda tangan dari Z One; sumber kebenaran saat ada
+  licenseToken    String?   @db.Text
+  licenseSyncedAt DateTime?
+  maxPractitioners Int      @default(3)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

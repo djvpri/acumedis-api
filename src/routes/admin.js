@@ -44,6 +44,8 @@ const toTenant = (t) => ({
   active: t.isActive,
   expires_at: t.expiresAt ? t.expiresAt.toISOString() : null,
   join_token: t.slug || null,
+  max_practitioners: t.maxPractitioners,
+  license_synced_at: t.licenseSyncedAt ? t.licenseSyncedAt.toISOString() : null,
 });
 
 const toUser = (u) => ({
@@ -118,8 +120,38 @@ async function post(req, reply) {
       if (d.planExpires !== undefined) {
         patch.expiresAt = d.planExpires ? new Date(d.planExpires) : null;
       }
+      if (Number.isFinite(d.maxPractitioners)) {
+        patch.maxPractitioners = Math.max(1, Math.min(100, Math.trunc(d.maxPractitioners)));
+      }
       const tenant = await prisma.tenant.update({ where: { id: String(d.tenantId) }, data: patch });
       return { ok: true, tenant: toTenant(tenant) };
+    }
+
+    /**
+     * Z One menitipkan lisensi bertanda tangan. Disimpan apa adanya — app tidak
+     * memperpanjang sendiri, hanya memverifikasi tanda tangan saat dipakai.
+     */
+    case 'setLicense': {
+      if (!d.tenantId) return fail(400, 'tenantId wajib');
+      if (!d.token) return fail(400, 'token wajib');
+      const { verify } = require('../license');
+      const payload = verify(String(d.token));
+      if (!payload) return fail(400, 'token lisensi tidak sah (tanda tangan tidak cocok)');
+      if (payload.tenantId !== String(d.tenantId)) {
+        return fail(400, 'token ini milik tenant lain');
+      }
+      const tenant = await prisma.tenant.update({
+        where: { id: String(d.tenantId) },
+        data: {
+          licenseToken: String(d.token),
+          licenseSyncedAt: new Date(),
+          plan: payload.plan || undefined,
+          expiresAt: payload.exp ? new Date(payload.exp) : undefined,
+          maxPractitioners: Number.isFinite(payload.maxPractitioners)
+            ? Math.max(1, Math.min(100, payload.maxPractitioners)) : undefined,
+        },
+      });
+      return { ok: true, tenant: toTenant(tenant), license: payload };
     }
 
     case 'deleteTenant': {

@@ -80,6 +80,21 @@ async function createPractitioner(req, reply) {
   const exists = await prisma.practitioner.findUnique({ where: { email } });
   if (exists) return reply.code(409).send({ ok: false, error: 'Email sudah terdaftar' });
 
+  // batas praktisi ikut lisensi: paket kecil tidak boleh menambah tanpa batas
+  const { statusOf } = require('../license');
+  const lic = await statusOf(req.user.tenantId);
+  const maxPrac = lic.maxPractitioners;
+  if (Number.isFinite(maxPrac)) {
+    const jumlah = await prisma.practitioner.count({ where: { tenantId: req.user.tenantId } });
+    if (jumlah >= maxPrac) {
+      return reply.code(402).send({
+        ok: false,
+        error: `Paket ${lic.plan || 'saat ini'} hanya untuk ${maxPrac} praktisi. Perpanjang atau naikkan paket di Z One.`,
+        license: { plan: lic.plan, maxPractitioners: maxPrac, count: jumlah },
+      });
+    }
+  }
+
   const created = await prisma.practitioner.create({
     data: {
       tenantId: req.user.tenantId,
