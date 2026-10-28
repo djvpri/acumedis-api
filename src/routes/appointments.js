@@ -20,13 +20,23 @@ function toAppointment(a) {
 
 const include = { patient: { select: { id: true, name: true } } };
 
+/**
+ * Batas satu hari kalender menurut zona waktu pengguna.
+ * `tz` = menit di timur UTC (WIB = 420). Tanpa ini, jadwal pagi (mis. 05:00 WIB)
+ * tersimpan sebagai hari sebelumnya dalam UTC dan muncul di tanggal yang salah.
+ */
+function dayBounds(date, tz) {
+  const offset = Number.isFinite(tz) ? tz : 0;
+  const start = new Date(`${date}T00:00:00.000Z`).getTime() - offset * 60_000;
+  return { start: new Date(start), end: new Date(start + 86_400_000 - 1) };
+}
+
 async function list(req) {
-  const { date, from, to, status, since, limit } = req.query || {};
+  const { date, from, to, status, since, limit, tz } = req.query || {};
   const where = { tenantId: req.user.tenantId, deletedAt: null };
 
   if (date) {
-    const start = new Date(`${date}T00:00:00.000Z`);
-    const end = new Date(`${date}T23:59:59.999Z`);
+    const { start, end } = dayBounds(String(date), Number(tz));
     where.scheduledAt = { gte: start, lte: end };
   } else if (from || to) {
     where.scheduledAt = {};
@@ -58,6 +68,33 @@ async function nextQueueNumber(tenantId, scheduledAt) {
   return (last?.queueNumber || 0) + 1;
 }
 
+/**
+ * Cari jadwal yang bentrok. Prisma tidak bisa membandingkan scheduledAt + durasi
+ * di query, jadi ambil kandidat dalam rentang lalu hitung di sini.
+ * @return jadwal yang bentrok, atau null.
+ */
+async function findConflict(tenantId, startAt, durationMinutes, ignoreId) {
+  const start = startAt.getTime();
+  const end = start + durationMinutes * 60_000;
+  const rows = await prisma.appointment.findMany({
+    where: {
+      tenantId,
+      deletedAt: null,
+      status: { not: 'cancelled' },
+      id: ignoreId ? { not: ignoreId } : undefined,
+      // jadwal lain tidak mungkin lebih dari 1 hari sebelumnya
+      scheduledAt: { gte: new Date(start - 86_400_000), lt: new Date(end) },
+    },
+    include,
+    orderBy: { scheduledAt: 'asc' },
+  });
+  return rows.find((a) => {
+    const aStart = a.scheduledAt.getTime();
+    const aEnd = aStart + (a.durationMinutes || 60) * 60_000;
+    return aStart < end && aEnd > start;
+  }) || null;
+}
+
 async function create(req, reply) {
   const b = req.body || {};
   if (!b.scheduled_at) return reply.code(400).send({ ok: false, error: 'scheduled_at wajib' });
@@ -75,6 +112,23 @@ async function create(req, reply) {
   }
 
   const scheduledAt = new Date(String(b.scheduled_at));
+  if (Number.isNaN(scheduledAt.getTime())) {
+    return reply.code(400).send({ ok: false, error: 'tanggal tidak valid' });
+  }
+  const duration = Number.isFinite(b.duration_minutes) ? b.duration_minutes : 60;
+
+  const clash = await findConflict(req.user.tenantId, scheduledAt, duration, null);
+  if (clash) {
+    // tampilkan jam menurut zona pengirim, bukan UTC
+    const tz = Number.isFinite(b.tz) ? b.tz : 0;
+    const local = new Date(clash.scheduledAt.getTime() + tz * 60_000).toISOString().slice(11, 16);
+    return reply.code(409).send({
+      ok: false,
+      error: 'Bentrok dengan ' + (clash.patient?.name || clash.externalName || 'jadwal lain') + ' pukul ' + local,
+      conflict_id: clash.id,
+    });
+  }
+
   const qn = b.queue_number != null
     ? parseInt(b.queue_number, 10)
     : await nextQueueNumber(req.user.tenantId, scheduledAt);
@@ -85,7 +139,7 @@ async function create(req, reply) {
       patientId,
       practitionerId: req.user.sub,
       scheduledAt,
-      durationMinutes: Number.isFinite(b.duration_minutes) ? b.duration_minutes : 60,
+      durationMinutes: duration,
       reason: b.reason || null,
       status: ['pending', 'confirmed', 'done', 'cancelled'].includes(b.status)
         ? b.status : 'confirmed',
@@ -106,11 +160,34 @@ async function update(req, reply) {
   if (!existing) return reply.code(404).send({ ok: false, error: 'jadwal tidak ditemukan' });
 
   const b = req.body || {};
+  const nextAt = b.scheduled_at ? new Date(String(b.scheduled_at)) : existing.scheduledAt;
+  if (Number.isNaN(nextAt.getTime())) {
+    return reply.code(400).send({ ok: false, error: 'tanggal tidak valid' });
+  }
+  const nextDuration = Number.isFinite(b.duration_minutes)
+    ? b.duration_minutes : existing.durationMinutes;
+
+  // ubah jam juga bisa bentrok — cek kecuali jadwal ini dibatalkan
+  const nextStatus = ['pending', 'confirmed', 'done', 'cancelled'].includes(b.status)
+    ? b.status : existing.status;
+  if (nextStatus !== 'cancelled') {
+    const clash = await findConflict(req.user.tenantId, nextAt, nextDuration, existing.id);
+    if (clash) {
+      const tz = Number.isFinite(b.tz) ? b.tz : 0;
+      const local = new Date(clash.scheduledAt.getTime() + tz * 60_000).toISOString().slice(11, 16);
+      return reply.code(409).send({
+        ok: false,
+        error: 'Bentrok dengan ' + (clash.patient?.name || clash.externalName || 'jadwal lain') + ' pukul ' + local,
+        conflict_id: clash.id,
+      });
+    }
+  }
+
   const a = await prisma.appointment.update({
     where: { id: existing.id },
     data: {
-      scheduledAt: b.scheduled_at ? new Date(String(b.scheduled_at)) : undefined,
-      durationMinutes: Number.isFinite(b.duration_minutes) ? b.duration_minutes : undefined,
+      scheduledAt: b.scheduled_at ? nextAt : undefined,
+      durationMinutes: Number.isFinite(b.duration_minutes) ? nextDuration : undefined,
       reason: b.reason !== undefined ? b.reason : undefined,
       status: ['pending', 'confirmed', 'done', 'cancelled'].includes(b.status)
         ? b.status : undefined,
