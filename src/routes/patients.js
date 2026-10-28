@@ -85,7 +85,10 @@ async function update(req, reply) {
     data: {
       name: b.name !== undefined ? String(b.name).trim() : undefined,
       gender: b.gender === 'male' || b.gender === 'female' ? b.gender : undefined,
-      birthDate: b.birth_date ? new Date(b.birth_date) : undefined,
+      // string kosong = pengguna mengosongkan kolom, bukan "jangan diubah"
+      birthDate: b.birth_date !== undefined
+        ? (b.birth_date ? new Date(b.birth_date) : null)
+        : undefined,
       phone: b.phone !== undefined ? b.phone : undefined,
       email: b.email !== undefined ? b.email : undefined,
       address: b.address !== undefined ? b.address : undefined,
