@@ -27,10 +27,13 @@ async function overview(req) {
   const { start, end, from, to, tz } = rangeOf(req.query || {});
   const tenantId = req.user.tenantId;
 
-  const [payments, expenses, sessions, unpaidSessions] = await Promise.all([
+  const [payments, expenses, sessions, unpaidSessions, practitioners] = await Promise.all([
     prisma.payment.findMany({
       where: { tenantId, paidAt: { gte: start, lte: end } },
-      select: { amount: true, method: true, paidAt: true },
+      select: {
+        amount: true, method: true, paidAt: true,
+        session: { select: { practitionerId: true } },
+      },
     }),
     prisma.expense.findMany({
       where: { tenantId, date: { gte: start, lte: end } },
@@ -50,6 +53,7 @@ async function overview(req) {
       orderBy: { sessionDate: 'asc' },
       take: 200,
     }),
+    prisma.practitioner.findMany({ where: { tenantId }, select: { id: true, name: true } }),
   ]);
 
   const income = payments.reduce((t, p) => t + p.amount, 0);
@@ -57,6 +61,16 @@ async function overview(req) {
 
   const byMethod = {};
   for (const p of payments) byMethod[p.method] = (byMethod[p.method] || 0) + p.amount;
+
+  // pendapatan per praktisi: ikut pemilik sesinya, bukan penerima uang
+  const nameOf = {};
+  for (const pr of practitioners) nameOf[pr.id] = pr.name;
+  const byPractitioner = {};
+  for (const p of payments) {
+    const id = p.session?.practitionerId;
+    const k = id ? (nameOf[id] || 'Tanpa nama') : 'Tidak tercatat';
+    byPractitioner[k] = (byPractitioner[k] || 0) + p.amount;
+  }
 
   const byCategory = {};
   for (const e of expenses) {
@@ -95,6 +109,7 @@ async function overview(req) {
     expense: spent,
     profit: income - spent,
     by_method: byMethod,
+    by_practitioner: byPractitioner,
     by_category: byCategory,
     billed: sessions.reduce((t, s) => t + (s.fee || 0), 0),
     sessions_count: sessions.length,
