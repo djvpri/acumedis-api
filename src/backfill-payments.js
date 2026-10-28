@@ -4,7 +4,7 @@
  * Sesi yang sudah "paid" dianggap lunas penuh, "partial" dianggap nol
  * (tidak ada catatan jumlahnya), "unpaid" nol.
  */
-const { prisma } = require('../db');
+const { prisma } = require('./db');
 
 async function backfill() {
   const tenants = await prisma.tenant.findMany({ select: { id: true } });
