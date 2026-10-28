@@ -11,7 +11,7 @@
  * payload: { tenantId, plan, exp, maxPractitioners, issuedAt }
  */
 const crypto = require('crypto');
-const { prisma } = require('../db');
+const { prisma } = require('./db');
 
 /** Masa tenggang: masih penuh, hanya diberi peringatan. */
 const GRACE_DAYS = 7;
