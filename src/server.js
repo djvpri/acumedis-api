@@ -9,6 +9,7 @@ const sso = require('./routes/sso');
 const logs = require('./routes/logs');
 const admin = require('./routes/admin');
 const reset = require('./routes/reset');
+const settings = require('./routes/settings');
 const patients = require('./routes/patients');
 const sessions = require('./routes/sessions');
 const appointments = require('./routes/appointments');
@@ -66,6 +67,13 @@ app.register(async (r) => {
   r.get('/v1/me', auth.me);
   r.get('/v1/summary', reports.summary);
   r.get('/v1/sync', reports.sync);
+
+  // pengaturan klinik + daftar praktisi
+  r.get('/v1/settings', settings.get);
+  r.patch('/v1/settings', settings.update);
+  r.post('/v1/practitioners', settings.createPractitioner);
+  r.patch('/v1/practitioners/:id', settings.updatePractitioner);
+  r.delete('/v1/practitioners/:id', settings.removePractitioner);
 
   // baca & purge log error (owner/admin)
   r.get('/v1/logs', logs.list);
