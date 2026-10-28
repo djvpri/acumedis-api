@@ -55,13 +55,17 @@ async function list(req) {
   return { ok: true, count: rows.length, appointments: rows.map(toAppointment) };
 }
 
-/** Nomor antrean berikutnya untuk tanggal tertentu (reset tiap hari). */
-async function nextQueueNumber(tenantId, scheduledAt) {
-  const d = new Date(scheduledAt);
-  const start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+/**
+ * Nomor antrean berikutnya untuk satu hari kalender pengguna (reset tiap hari).
+ * Memakai zona pengirim: kalau memakai hari UTC, antrean berganti nomor pukul
+ * 07:00 WIB, bukan tengah malam.
+ */
+async function nextQueueNumber(tenantId, scheduledAt, tz) {
+  const offset = Number.isFinite(tz) ? tz : 0;
+  const localDate = new Date(scheduledAt.getTime() + offset * 60_000).toISOString().slice(0, 10);
+  const { start, end } = dayBounds(localDate, offset);
   const last = await prisma.appointment.findFirst({
-    where: { tenantId, scheduledAt: { gte: start, lt: end }, queueNumber: { not: null } },
+    where: { tenantId, scheduledAt: { gte: start, lt: new Date(end.getTime() + 1) }, queueNumber: { not: null } },
     orderBy: { queueNumber: 'desc' },
     select: { queueNumber: true },
   });
@@ -131,7 +135,7 @@ async function create(req, reply) {
 
   const qn = b.queue_number != null
     ? parseInt(b.queue_number, 10)
-    : await nextQueueNumber(req.user.tenantId, scheduledAt);
+    : await nextQueueNumber(req.user.tenantId, scheduledAt, b.tz);
 
   const a = await prisma.appointment.create({
     data: {
