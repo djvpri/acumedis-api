@@ -8,6 +8,7 @@ const auth = require('./routes/auth');
 const sso = require('./routes/sso');
 const logs = require('./routes/logs');
 const admin = require('./routes/admin');
+const reset = require('./routes/reset');
 const patients = require('./routes/patients');
 const sessions = require('./routes/sessions');
 const appointments = require('./routes/appointments');
@@ -47,6 +48,9 @@ app.post('/v1/auth/sso/start', sso.start);
 app.post('/v1/auth/sso/claim', sso.claim);
 app.get('/v1/auth/sso/poll', sso.poll);
 app.post('/v1/auth/sso/exchange', sso.exchange);
+
+// Reset password dengan kode 6 digit (dibuat admin dari Z One)
+app.post('/v1/auth/reset/verify', reset.verify);
 
 // Log error dari app — publik, identitas perangkat lewat header X-Device-Id
 app.post('/v1/logs', logs.create);

@@ -211,6 +211,75 @@ async function post(req, reply) {
       return { ok: true, user: toUser(user) };
     }
 
+    /**
+     * resetCode — kode reset 6 digit untuk app INI (tanpa email).
+     * Kode dikembalikan sekali, berlaku 15 menit, dipakai di halaman reset app.
+     */
+    case 'resetCode': {
+      if (!email) return fail(400, 'Email wajib diisi');
+      const user = await prisma.practitioner.findUnique({ where: { email } });
+      if (!user) return fail(404, 'Pengguna tidak ada di AcuMedis');
+
+      const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+      const expiresAt = new Date(Date.now() + 15 * 60_000);
+
+      await prisma.passwordReset.deleteMany({ where: { email, usedAt: null } });
+      await prisma.passwordReset.create({
+        data: {
+          codeHash: crypto.createHash('sha256').update(code).digest('hex'),
+          email,
+          expiresAt,
+        },
+      });
+
+      return {
+        ok: true,
+        code,
+        expiresInMinutes: 15,
+        app: 'acumedis',
+        resetUrl: `${process.env.ZONE_URL || 'https://zone.zomet.my.id'}/reset`,
+      };
+    }
+
+    /** resetPassword — dipanggil dari /manage Z One untuk app INI saja.
+     * Password hanya tersimpan di sini; Z One tidak pernah menyimpannya.
+     * data: { mode: 'set'|'generate', password? }
+     */
+    case 'resetPassword': {
+      if (!email) return fail(400, 'Email wajib diisi');
+      const user = await prisma.practitioner.findUnique({ where: { email } });
+      if (!user) return fail(404, 'Pengguna tidak ada di AcuMedis');
+
+      const mode = d.mode === 'generate' ? 'generate' : 'set';
+      let plain;
+      if (mode === 'generate') {
+        const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+        plain = '';
+        for (let i = 0; i < 10; i++) plain += alphabet[crypto.randomInt(alphabet.length)];
+      } else {
+        plain = String(d.password || '');
+        if (plain.length < 8) return fail(400, 'Password minimal 8 karakter');
+      }
+
+      await prisma.practitioner.update({
+        where: { id: user.id },
+        data: { password: await bcrypt.hash(plain, 10) },
+      });
+
+      // sesi app ini ikut dicabut supaya password lama benar-benar mati
+      await prisma.refreshToken.updateMany({
+        where: { userId: user.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+
+      return {
+        ok: true,
+        email,
+        app: 'acumedis',
+        ...(mode === 'generate' ? { password: plain } : {}),
+      };
+    }
+
     default:
       return fail(400, `Aksi tidak dikenal: ${action}`);
   }

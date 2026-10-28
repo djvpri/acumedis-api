@@ -136,6 +136,20 @@ model ErrorLog {
   @@index([occurredAt])
 }
 
+// Kode reset password sekali pakai (dibuat admin dari Z One, dipakai user di app).
+model PasswordReset {
+  id        String    @id @default(cuid())
+  codeHash  String    @unique
+  email     String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdBy String?
+  createdAt DateTime  @default(now())
+
+  @@index([email])
+  @@index([expiresAt])
+}
+
 // Kode perangkat sekali pakai untuk SSO dari Z One (device-code flow).
 model SsoCode {
   id        String    @id @default(cuid())
