@@ -1,5 +1,32 @@
 'use strict';
+const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
 const { prisma } = require('../db');
+
+const UPLOAD_DIR = process.env.UPLOAD_DIR || '/data/uploads';
+const PHOTO_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+
+/**
+ * Simpan foto lidah ke volume upload, kembalikan URL publiknya.
+ * Gagal menyimpan file tidak boleh menggagalkan penyimpanan sesi: rekam medis
+ * lebih penting daripada fotonya.
+ */
+async function saveTongue(tenantId, base64, mime) {
+  const ext = PHOTO_EXT[String(mime || 'image/jpeg')] || 'jpg';
+  const raw = String(base64).replace(/^data:[^;]+;base64,/, '');
+  const buf = Buffer.from(raw, 'base64');
+  if (!buf.length || buf.length > 8 * 1024 * 1024) return null;
+  try {
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    const name = `${tenantId}-tongue-${crypto.randomBytes(6).toString('hex')}.${ext}`;
+    fs.writeFileSync(path.join(UPLOAD_DIR, name), buf);
+    return `/uploads/${name}`;
+  } catch (e) {
+    console.warn('[sessions] gagal simpan foto lidah:', e.message);
+    return null;
+  }
+}
 
 function toSession(s) {
   return {
@@ -78,6 +105,12 @@ async function create(req, reply) {
   const status = b.payment_status === 'paid' || b.payment_status === 'partial'
     ? b.payment_status : 'unpaid';
 
+  // foto & teks AI dihitung dulu: null = tidak ada foto, jangan buat baris kosong
+  const photoUrl = b.photo_base64
+    ? await saveTongue(req.user.tenantId, b.photo_base64, b.photo_mime)
+    : null;
+  const aiText = b.ai_text ? String(b.ai_text).slice(0, 4000) : null;
+
   const s = await prisma.session.create({
     data: {
       tenantId: req.user.tenantId,
@@ -85,6 +118,14 @@ async function create(req, reply) {
       practitionerId: req.user.sub,
       sessionDate: b.session_date ? new Date(b.session_date) : new Date(),
       chiefComplaint: String(b.chief_complaint).trim(),
+      // foto lidah base64 (opsional) disimpan sekalian, supaya satu request
+      // tidak perlu dua kali kirim gambar dari HP
+      photos: photoUrl
+        ? { create: { photoType: 'tongue', fileUrl: photoUrl, aiAnalysis: aiText } }
+        : undefined,
+      // catatan AI ikut disimpan supaya saran yang dulu dipakai tetap bisa ditelusuri
+      aiRecommendation: b.ai_recommendation && typeof b.ai_recommendation === 'object'
+        ? b.ai_recommendation : undefined,
       tongueColor: b.tongue_color || null,
       tongueCoating: b.tongue_coating || null,
       pulseQuality: b.pulse_quality || null,
