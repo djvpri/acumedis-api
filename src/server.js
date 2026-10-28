@@ -10,6 +10,7 @@ const logs = require('./routes/logs');
 const admin = require('./routes/admin');
 const reset = require('./routes/reset');
 const settings = require('./routes/settings');
+const ai = require('./routes/ai');
 const patients = require('./routes/patients');
 const sessions = require('./routes/sessions');
 const appointments = require('./routes/appointments');
@@ -74,6 +75,9 @@ app.register(async (r) => {
   r.post('/v1/practitioners', settings.createPractitioner);
   r.patch('/v1/practitioners/:id', settings.updatePractitioner);
   r.delete('/v1/practitioners/:id', settings.removePractitioner);
+
+  // analisis foto lidah (Gemini, kunci di server)
+  r.post('/v1/ai/tongue', ai.tongue);
 
   // baca & purge log error (owner/admin)
   r.get('/v1/logs', logs.list);
