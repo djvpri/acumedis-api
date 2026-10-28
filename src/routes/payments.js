@@ -66,9 +66,21 @@ async function create(req, reply) {
   if (!Number.isFinite(amount) || amount <= 0) {
     return reply.code(400).send({ ok: false, error: 'jumlah bayar harus lebih dari 0' });
   }
-  // lebih bayar hampir selalu salah ketik, jadi ditolak — bukan disimpan diam-diam
-  if (s.fee && amount > s.fee + 0.005) {
-    return reply.code(400).send({ ok: false, error: 'jumlah melebihi biaya sesi (' + s.fee + ')' });
+
+  // yang diperiksa adalah TOTAL, bukan satu pembayaran: 3x100rb untuk biaya
+  // 250rb harus ditolak, bukan diterima karena tiap baris di bawah biaya
+  if (s.fee) {
+    const sudah = await prisma.payment.aggregate({ where: { sessionId: s.id }, _sum: { amount: true } });
+    const sisa = s.fee - (sudah._sum.amount || 0);
+    if (amount > sisa + 0.005) {
+      return reply.code(400).send({
+        ok: false,
+        error: sisa <= 0.005
+          ? 'sesi ini sudah lunas'
+          : 'jumlah melebihi sisa tagihan (' + sisa + ')',
+        balance: Math.max(0, sisa),
+      });
+    }
   }
 
   const p = await prisma.payment.create({
