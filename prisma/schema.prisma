@@ -207,7 +207,7 @@ model Session {
   aiRecommendation Json?
   fee             Float?
   paymentStatus   PaymentStatus @default(unpaid)
-  /** total yang sudah dibayar; status dihitung dari ini, bukan diset manual */
+  /// total yang sudah dibayar; status dihitung dari ini, bukan diset manual
   paidAmount      Float         @default(0)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -221,10 +221,8 @@ model Session {
   @@index([patientId])
 }
 
-/**
- * Satu baris pembayaran. Sesi bisa dibayar bertahap, jadi jumlahnya dijumlah
- * dari tabel ini — bukan satu kolom yang ditimpa.
- */
+/// Satu baris pembayaran; sesi bisa dibayar bertahap.
+/// Jumlahnya dijumlah dari tabel ini, bukan satu kolom yang ditimpa.
 model Payment {
   id        String    @id @default(cuid())
   tenantId  String
