@@ -12,6 +12,8 @@ const reset = require('./routes/reset');
 const settings = require('./routes/settings');
 const ai = require('./routes/ai');
 const patients = require('./routes/patients');
+const payments = require('./routes/payments');
+const finance = require('./routes/finance');
 const sessions = require('./routes/sessions');
 const appointments = require('./routes/appointments');
 const photos = require('./routes/photos');
@@ -108,6 +110,12 @@ app.register(async (r) => {
   r.patch('/v1/stock/:id', inventory.updateStock);
   r.get('/v1/expenses', inventory.listExpenses);
   r.post('/v1/expenses', inventory.createExpense);
+
+  // pembayaran: satu baris per transaksi, status sesi dihitung dari jumlahnya
+  r.post('/v1/sessions/:id/payments', payments.create);
+  r.get('/v1/payments', payments.list);
+  r.delete('/v1/payments/:id', payments.remove);
+  r.get('/v1/finance', finance.overview);
 });
 
 // Foto: dipakai app dengan header Authorization; URL-nya relatif

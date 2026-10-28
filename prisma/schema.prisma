@@ -70,6 +70,7 @@ model Tenant {
   appointments  Appointment[]
   stockItems    StockItem[]
   expenses      Expense[]
+  payments      Payment[]
   requests      AppointmentRequest[]
 
   @@index([slug])
@@ -206,15 +207,39 @@ model Session {
   aiRecommendation Json?
   fee             Float?
   paymentStatus   PaymentStatus @default(unpaid)
+  /** total yang sudah dibayar; status dihitung dari ini, bukan diset manual */
+  paidAmount      Float         @default(0)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   deletedAt       DateTime?
 
-  photos SessionPhoto[]
+  photos   SessionPhoto[]
+  payments Payment[]
 
   @@index([tenantId, sessionDate])
   @@index([tenantId, updatedAt])
   @@index([patientId])
+}
+
+/**
+ * Satu baris pembayaran. Sesi bisa dibayar bertahap, jadi jumlahnya dijumlah
+ * dari tabel ini — bukan satu kolom yang ditimpa.
+ */
+model Payment {
+  id        String    @id @default(cuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sessionId String
+  session   Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  amount    Float
+  method    String    @default("cash")
+  note      String?
+  paidAt    DateTime  @default(now())
+  createdBy String?
+  createdAt DateTime  @default(now())
+
+  @@index([tenantId, paidAt])
+  @@index([sessionId])
 }
 
 model SessionPhoto {

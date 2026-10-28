@@ -46,7 +46,13 @@ function toSession(s) {
     notes: s.notes,
     ai_recommendation: s.aiRecommendation,
     fee: s.fee,
+    paid_amount: s.paidAmount || 0,
+    balance: Math.max(0, (s.fee || 0) - (s.paidAmount || 0)),
     payment_status: s.paymentStatus,
+    payments: (s.payments || []).map(p => ({
+      id: p.id, amount: p.amount, method: p.method, note: p.note,
+      paid_at: p.paidAt.toISOString(),
+    })),
     photos: (s.photos || []).map(p => ({
       id: p.id, type: p.photoType, url: p.fileUrl, analysis: p.aiAnalysis,
     })),
@@ -58,6 +64,7 @@ function toSession(s) {
 const include = {
   patient: { select: { id: true, name: true } },
   photos: true,
+  payments: { orderBy: { paidAt: 'desc' } },
 };
 
 async function list(req) {
@@ -118,6 +125,12 @@ async function create(req, reply) {
       practitionerId: req.user.sub,
       sessionDate: b.session_date ? new Date(b.session_date) : new Date(),
       chiefComplaint: String(b.chief_complaint).trim(),
+      // sesi baru yang langsung ditandai lunas juga harus punya baris pembayaran,
+      // kalau tidak buku kas tidak akan pernah melihat uangnya
+      paidAmount: status === 'paid' && Number.isFinite(b.fee) ? b.fee : 0,
+      payments: status === 'paid' && Number.isFinite(b.fee) && b.fee > 0
+        ? { create: { tenantId: req.user.tenantId, amount: b.fee, method: 'cash', note: 'Pembayaran saat sesi', createdBy: req.user.sub } }
+        : undefined,
       // foto lidah base64 (opsional) disimpan sekalian, supaya satu request
       // tidak perlu dua kali kirim gambar dari HP
       photos: photoUrl
@@ -176,11 +189,36 @@ async function setPayment(req, reply) {
   if (!['paid', 'unpaid', 'partial'].includes(payment_status)) {
     return reply.code(400).send({ ok: false, error: 'payment_status tidak valid' });
   }
-  const r = await prisma.session.updateMany({
+  const s = await prisma.session.findFirst({
     where: { id: req.params.id, tenantId: req.user.tenantId },
+    select: { id: true, fee: true },
+  });
+  if (!s) return reply.code(404).send({ ok: false, error: 'sesi tidak ditemukan' });
+
+  // "lunas" dicatat sebagai pembayaran penuh, supaya buku kas punya barisnya.
+  // Menandai belum bayar = hapus semua pembayaran sesi ini.
+  if (payment_status === 'unpaid') {
+    await prisma.payment.deleteMany({ where: { sessionId: s.id } });
+  } else if (payment_status === 'paid' && s.fee) {
+    const paid = await prisma.payment.aggregate({ where: { sessionId: s.id }, _sum: { amount: true } });
+    const sisa = s.fee - (paid._sum.amount || 0);
+    if (sisa > 0.005) {
+      await prisma.payment.create({
+        data: {
+          tenantId: req.user.tenantId, sessionId: s.id, amount: sisa,
+          method: 'cash', note: 'Pelunasan', createdBy: req.user.sub,
+        },
+      });
+    }
+  }
+
+  await prisma.session.updateMany({
+    where: { id: s.id, tenantId: req.user.tenantId },
     data: { paymentStatus: payment_status },
   });
-  if (r.count === 0) return reply.code(404).send({ ok: false, error: 'sesi tidak ditemukan' });
+  // status akhir tetap dihitung dari tabel pembayaran
+  const { recalc } = require('./payments');
+  await recalc(s.id);
   return { ok: true };
 }
 
